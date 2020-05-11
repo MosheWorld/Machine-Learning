@@ -10,7 +10,6 @@ from gcommand_loader import GCommandLoader
 num_epochs = 8
 batch_size = 64
 learning_rate = 0.0007
-image_size = 20 * 11 * 100
 
 
 class CNN(nn.Module):
