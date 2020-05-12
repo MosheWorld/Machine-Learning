@@ -4,15 +4,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torchvision
 
-seed = 42
+seed = 8
 torch.manual_seed(seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
-epochs = 30
+epochs = 20
 test_batch_size = 10
 train_batch_size = 64
 learning_rate = 0.001
@@ -30,28 +29,35 @@ class Autoencoder(nn.Module):
     def __init__(self, image_size):
         super(Autoencoder, self).__init__()
         self.image_size = image_size
-        self.encoder_block1 = nn.Sequential(nn.Linear(in_features=self.image_size, out_features=512),nn.ReLU())
-        self.encoder_block2 = nn.Sequential(nn.Linear(in_features=512, out_features=128),nn.ReLU())
-        self.encoder_output = nn.Sequential(nn.Linear(in_features=128, out_features=128),nn.ReLU())
+        self.encoder = nn.Sequential(
+            nn.Linear(in_features=self.image_size, out_features=256),
+            nn.ReLU(),
+            nn.Linear(in_features=256, out_features=128),
+            nn.ReLU(),
+            nn.Linear(in_features=128, out_features=64),
+            nn.ReLU()
+        )
 
-        self.decoder_block1 = nn.Sequential(nn.Linear(in_features=128, out_features=128),nn.ReLU())
-        self.decoder_block2 = nn.Sequential(nn.Linear(in_features=128, out_features=512),nn.ReLU())
-        self.decoder_output = nn.Sequential(nn.Linear(in_features=512, out_features=self.image_size),nn.ReLU())
+        self.decoder = nn.Sequential(
+            nn.Linear(in_features=64, out_features=128),
+            nn.ReLU(),
+            nn.Linear(in_features=128, out_features=256),
+            nn.ReLU(),
+            nn.Linear(in_features=256, out_features=self.image_size),
+            nn.ReLU()
+        )
 
-    def forward(self, features):
-        out = self.encoder_block1(features)
-        out = self.encoder_block2(out)
-        out = self.encoder_output(out)
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
-        out = self.decoder_block1(out)
-        out = self.decoder_block2(out)
-        out = self.decoder_output(out)
-        return out
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Autoencoder(image_size=784).to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 loss_function = nn.MSELoss()
+train_loss_list = []
 
 for epoch in range(epochs):
     loss = 0
@@ -65,33 +71,53 @@ for epoch in range(epochs):
         loss += train_loss.item()
 
     loss = loss / len(train_loader)
-    print("epoch : {}/{}, recon loss = {:.8f}".format(epoch + 1, epochs, loss))
+    train_loss_list.append(loss)
+    print("epoch : {}/{}, train loss = {:.8f}".format(epoch + 1, epochs, loss))
 
 
-test_examples = None
-with torch.no_grad():
-    for batch_features in test_loader:
-        batch_features = batch_features[0]
-        test_examples = batch_features.view(-1, 784).to(device)
-        reconstruction = model(test_examples)
-        break
+def predict_test_examples():
+    test_examples = None
+    reconstruction = None
+    with torch.no_grad():
+        for batch_features in test_loader:
+            batch_features = batch_features[0]
+            test_examples = batch_features.view(-1, 784).to(device)
+            reconstruction = model(test_examples)
+            break
+    return test_examples, reconstruction
 
 
-with torch.no_grad():
-    number = 10
-    plt.figure(figsize=(20, 4))
-    for index in range(number):
-        # display original
-        ax = plt.subplot(2, number, index + 1)
-        plt.imshow(test_examples[index].cpu().numpy().reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-
-        # display reconstruction
-        ax = plt.subplot(2, number, index + 1 + number)
-        plt.imshow(reconstruction[index].cpu().numpy().reshape(28, 28))
-        plt.gray()
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
+def display_loss_graph():
+    plt.figure()
+    plt.plot(train_loss_list)
+    plt.title('Train Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
     plt.show()
+    plt.savefig('deep_ae_fashionmnist_loss.png')
+
+
+def output_test_examples():
+    with torch.no_grad():
+        number = 10
+        plt.figure(figsize=(20, 4))
+        for index in range(number):
+            # display original
+            ax = plt.subplot(2, number, index + 1)
+            plt.imshow(test_examples[index].cpu().numpy().reshape(28, 28))
+            plt.gray()
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            # display reconstruction
+            ax = plt.subplot(2, number, index + 1 + number)
+            plt.imshow(reconstruction[index].cpu().numpy().reshape(28, 28))
+            plt.gray()
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+        plt.show()
+
+
+display_loss_graph()
+test_examples, reconstruction = predict_test_examples()
+output_test_examples()
